@@ -7,7 +7,7 @@ from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
 
-DATA_FILE = "timers.yaml"
+DATA_FILE = "data/timers.yaml"
 TIMER_NAME = os.getenv("TIMER_NAME", "something")
 
 timers = []

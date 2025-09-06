@@ -23,8 +23,7 @@ spec:
           value: "{{ .Values.timerName }}"
         volumeMounts:
         - name: timer-data
-          mountPath: /app/timers.yaml
-          subPath: timers.yaml
+          mountPath: /app/data
       volumes:
       - name: timer-data
         persistentVolumeClaim:
