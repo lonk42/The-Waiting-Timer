@@ -1,0 +1,6 @@
+apiVersion: v2
+name: the-waiting-timer
+description: A simple timer webapp with YAML persistence
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
