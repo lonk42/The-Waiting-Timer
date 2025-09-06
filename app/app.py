@@ -15,6 +15,7 @@ running_timer = None
 
 
 def load_timers():
+    """Load timers from YAML file into memory."""
     global timers
     try:
         with open(DATA_FILE, "r") as f:
@@ -24,12 +25,14 @@ def load_timers():
 
 
 def save_timers():
+    """Save timers back to YAML file."""
     with open(DATA_FILE, "w") as f:
         yaml.safe_dump(timers, f)
 
 
 @app.route("/")
 def index():
+    load_timers()  # always reload latest timers
     total_seconds = sum(t["duration"] for t in timers)
     return render_template(
         "index.html",
@@ -52,6 +55,8 @@ def start_timer():
 @app.route("/stop", methods=["POST"])
 def stop_timer():
     global running_timer
+    load_timers()
+
     if running_timer is None:
         return jsonify({"status": "no timer running"})
 
@@ -72,6 +77,8 @@ def stop_timer():
 
 @app.route("/update_description", methods=["POST"])
 def update_description():
+    load_timers()
+
     data = request.json
     timer_id = data.get("id")
     description = data.get("description", "")
@@ -87,6 +94,7 @@ def update_description():
 
 @app.route("/total")
 def get_total():
+    load_timers()
     total_seconds = sum(t["duration"] for t in timers)
     if running_timer:
         total_seconds += int(time.time() - running_timer)
@@ -102,6 +110,6 @@ def format_duration(seconds):
 app.jinja_env.globals.update(format_duration=format_duration)
 
 if __name__ == "__main__":
-    load_timers()
+    load_timers()  # load once at startup
     app.run(debug=True, host="0.0.0.0")
 
