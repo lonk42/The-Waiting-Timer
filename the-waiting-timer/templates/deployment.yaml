@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "the-waiting-timer.fullname" . }}
+  name: {{ .Chart.Name }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app: {{ include "the-waiting-timer.name" . }}
+      app: {{ .Chart.Name }}
   template:
     metadata:
       labels:
-        app: {{ include "the-waiting-timer.name" . }}
+        app: {{ .Chart.Name }}
     spec:
       containers:
       - name: the-waiting-timer
@@ -28,4 +28,4 @@ spec:
       volumes:
       - name: timer-data
         persistentVolumeClaim:
-          claimName: {{ include "the-waiting-timer.fullname" . }}-pvc
+          claimName: {{ .Chart.Name }}-pvc
