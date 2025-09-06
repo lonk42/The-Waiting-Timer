@@ -1,54 +1,58 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>{{ timer_name }} Timer</title>
+  <title>Timer App</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-900 text-white flex flex-col items-center min-h-screen p-6">
+<body class="bg-gray-900 text-gray-100 min-h-screen flex items-center justify-center">
+  <div class="max-w-3xl w-full text-center p-8">
+    <!-- Total Time -->
+    <h1 class="text-5xl font-bold text-indigo-400 mb-10">
+      <div>Total time waited for {{ timer_name }}</div>
+      <div id="total" class="mt-4 text-7xl text-white">{{ format_duration(total_seconds) }}</div>
+    </h1>
 
-  <h1 class="text-4xl font-bold mb-4">Total time waited for {{ timer_name }}</h1>
-  <div id="total-time" class="text-6xl font-mono text-green-400 mb-8">
-    {{ format_duration(total_seconds) }}
-  </div>
-
-  <div class="flex gap-4 mb-8">
-    <button onclick="startTimer()" class="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-xl">Start</button>
-    <button onclick="stopTimer()" class="bg-red-600 hover:bg-red-700 px-6 py-3 rounded-xl">Stop</button>
-  </div>
-
-  {% if running %}
-    <div class="mb-8 text-center">
-      <h2 class="text-2xl mb-2">Running Timer</h2>
-      <div id="running-timer" class="text-4xl font-mono text-yellow-400">00:00:00</div>
+    <!-- Controls -->
+    <div class="flex justify-center gap-6 mb-10">
+      <button onclick="startTimer()" class="px-6 py-3 rounded-lg bg-green-600 hover:bg-green-700 font-semibold">Start</button>
+      <button onclick="stopTimer()" class="px-6 py-3 rounded-lg bg-red-600 hover:bg-red-700 font-semibold">Stop</button>
     </div>
-  {% endif %}
 
-  <h2 class="text-2xl font-semibold mb-4">Saved Timers</h2>
-  <div id="timers" class="w-full max-w-3xl space-y-4">
-    {% for t in timers %}
-      <div class="bg-gray-800 p-4 rounded-xl flex justify-between items-center">
-        <div>
-          <p class="font-mono text-lg">{{ t.datetime }} | {{ format_duration(t.duration) }}</p>
-          <input type="text" value="{{ t.description }}" 
-                 onchange="updateDescription({{ t.id }}, this.value)"
-                 class="bg-gray-700 mt-2 p-2 rounded w-80">
-        </div>
+    <!-- Running Timer -->
+    <div id="running" class="mb-12 hidden">
+      <p class="text-xl text-red-400 font-semibold mb-2">Waiting...</p>
+      <p id="subtimer" class="text-4xl font-mono text-red-300"></p>
+    </div>
+
+    <!-- Saved Timers -->
+    <h2 class="text-2xl font-semibold text-gray-200 mb-6">Saved Timers</h2>
+    <div id="timers" class="space-y-4">
+      {% for t in timers %}
+      <div class="p-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md text-left">
+        <p><strong>{{ t.datetime }}</strong> — {{ format_duration(t.duration) }}</p>
+        <input class="description-input w-full border border-gray-600 bg-gray-700 text-gray-100 rounded px-3 py-2 mt-3"
+               type="text"
+               placeholder="Add description..."
+               value="{{ t.description }}"
+               onblur="updateDescription({{ t.id }}, this.value)">
       </div>
-    {% endfor %}
+      {% endfor %}
+    </div>
   </div>
 
   <script>
+    let subtimerInterval = null;
+    let runningSince = null;
+
     async function startTimer() {
-      let res = await fetch("/start", {method: "POST"});
-      let data = await res.json();
-      if (data.status === "started") location.reload();
+      await fetch("/start", {method: "POST"});
+      fetchState();
     }
 
     async function stopTimer() {
-      let res = await fetch("/stop", {method: "POST"});
-      let data = await res.json();
-      if (data.id) location.reload();
+      await fetch("/stop", {method: "POST"});
+      fetchState();
     }
 
     async function updateDescription(id, description) {
@@ -57,36 +61,77 @@
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({id, description})
       });
+      fetchState();
+    }
+
+    function startSubtimer(startTime) {
+      const runningDiv = document.getElementById("running");
+      const subtimer = document.getElementById("subtimer");
+      runningDiv.classList.remove("hidden");
+      runningSince = startTime * 1000; // convert to ms
+
+      if (subtimerInterval) clearInterval(subtimerInterval);
+      subtimerInterval = setInterval(() => {
+        const elapsed = Date.now() - runningSince;
+        const mins = String(Math.floor(elapsed / 60000)).padStart(2, "0");
+        const secs = String(Math.floor((elapsed % 60000) / 1000)).padStart(2, "0");
+        const ms = String(Math.floor((elapsed % 1000) / 10)).padStart(2, "0");
+        subtimer.textContent = `${mins}:${secs}.${ms}`;
+      }, 50);
+    }
+
+    function stopSubtimer() {
+      const runningDiv = document.getElementById("running");
+      runningDiv.classList.add("hidden");
+      if (subtimerInterval) clearInterval(subtimerInterval);
+      subtimerInterval = null;
+      runningSince = null;
+    }
+
+    async function fetchState() {
+      const res = await fetch("/state");
+      const data = await res.json();
+
+      // update total
+      document.getElementById("total").textContent =
+        new Date(data.total * 1000).toISOString().substr(11, 8);
+
+      // update running timer
+      if (data.running) {
+        startSubtimer(data.running.start_time);
+      } else {
+        stopSubtimer();
+      }
+
+      // rebuild timers list
+      const timersDiv = document.getElementById("timers");
+      timersDiv.innerHTML = "";
+      data.timers.forEach(t => {
+        const box = document.createElement("div");
+        box.className = "p-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md text-left";
+        box.innerHTML = `
+          <p><strong>${t.datetime}</strong> — ${formatDuration(t.duration)}</p>
+          <input class="description-input w-full border border-gray-600 bg-gray-700 text-gray-100 rounded px-3 py-2 mt-3"
+                 type="text"
+                 placeholder="Add description..."
+                 value="${t.description}"
+                 onblur="updateDescription(${t.id}, this.value)">
+        `;
+        timersDiv.appendChild(box);
+      });
     }
 
     function formatDuration(seconds) {
-      let hrs = String(Math.floor(seconds / 3600)).padStart(2, '0');
-      let mins = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
-      let secs = String(seconds % 60).padStart(2, '0');
+      const hrs = String(Math.floor(seconds / 3600)).padStart(2,"0");
+      const mins = String(Math.floor((seconds % 3600) / 60)).padStart(2,"0");
+      const secs = String(seconds % 60).padStart(2,"0");
       return `${hrs}:${mins}:${secs}`;
     }
 
-    async function updateTotal() {
-      let res = await fetch("/total");
-      let data = await res.json();
-      document.getElementById("total-time").textContent = formatDuration(data.total);
-    }
-
-    {% if running %}
-    const startTime = {{ running }};
-    function updateRunningTimer() {
-      const now = Date.now() / 1000;
-      let elapsed = Math.floor(now - startTime);
-      document.getElementById("running-timer").textContent = formatDuration(elapsed);
-    }
-    setInterval(updateRunningTimer, 1000);
-    updateRunningTimer();
-
-    setInterval(updateTotal, 1000);
-    updateTotal();
-    {% endif %}
+    // refresh periodically
+    setInterval(fetchState, 2000);
+    fetchState();
   </script>
-
 </body>
 </html>
 
