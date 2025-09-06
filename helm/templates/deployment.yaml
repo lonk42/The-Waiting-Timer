@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "the-waiting-timer.fullname" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "the-waiting-timer.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "the-waiting-timer.name" . }}
+    spec:
+      containers:
+      - name: the-waiting-timer
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - containerPort: 5000
+        env:
+        - name: TIMER_NAME
+          value: "{{ .Values.timerName }}"
+        volumeMounts:
+        - name: timer-data
+          mountPath: /app/timers.yaml
+          subPath: timers.yaml
+      volumes:
+      - name: timer-data
+        persistentVolumeClaim:
+          claimName: {{ include "the-waiting-timer.fullname" . }}-pvc
