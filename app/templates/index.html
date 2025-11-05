@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <title>Timer App</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen flex items-center justify-center">
   <div class="max-w-3xl w-full text-center p-8">
@@ -46,25 +47,22 @@
   <script>
     let subtimerInterval = null;
     let runningSince = null;
+    let socket = null;
 
     async function startTimer() {
       await fetch("/start", {method: "POST"});
-      fetchState();
     }
 
     async function stopTimer() {
       await fetch("/stop", {method: "POST"});
-      fetchState();
     }
 
     async function pauseTimer() {
       await fetch("/pause", {method: "POST"});
-      fetchState();
     }
 
     async function resumeTimer() {
       await fetch("/resume", {method: "POST"});
-      fetchState();
     }
 
     async function updateDescription(id, description) {
@@ -73,7 +71,6 @@
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({id, description})
       });
-      fetchState();
     }
 
     function startSubtimer(startTime, accumulated) {
@@ -101,10 +98,7 @@
       runningSince = null;
     }
 
-    async function fetchState() {
-      const res = await fetch("/state");
-      const data = await res.json();
-
+    function updateUI(data) {
       // update total
       document.getElementById("total").textContent = formatDuration(data.total);
 
@@ -172,9 +166,18 @@
       return `${hrs}:${mins}:${secs}`;
     }
 
-    // refresh periodically
-    setInterval(fetchState, 2000);
-    fetchState();
+    // Initialize Socket.IO connection
+    socket = io();
+
+    // Listen for state changes from server
+    socket.on('state_changed', function(data) {
+      updateUI(data);
+    });
+
+    // Initial state fetch
+    fetch("/state")
+      .then(res => res.json())
+      .then(data => updateUI(data));
   </script>
 </body>
 </html>

@@ -4,8 +4,10 @@ import time
 import yaml
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify
+from flask_socketio import SocketIO, emit
 
 app = Flask(__name__)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 DATA_FILE = "data/timers.yaml"
 TIMER_NAME = os.getenv("TIMER_NAME", "something")
@@ -35,6 +37,26 @@ def save_state():
     os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
     with open(DATA_FILE, "w") as f:
         yaml.safe_dump(state, f, sort_keys=False)
+
+def get_current_state():
+    """Get current state with calculated total."""
+    total_seconds = sum(t["duration"] for t in state["timers"])
+    if state["running"]:
+        accumulated = state["running"].get("accumulated", 0)
+        paused = state["running"].get("paused", False)
+        if paused:
+            total_seconds += int(accumulated)
+        else:
+            total_seconds += int(accumulated + (time.time() - state["running"]["start_time"]))
+    return {
+        "timers": state["timers"],
+        "running": state["running"],
+        "total": total_seconds
+    }
+
+def emit_state_change():
+    """Emit current state to all connected clients."""
+    socketio.emit('state_changed', get_current_state())
 
 @app.route("/")
 def index():
@@ -67,6 +89,7 @@ def start_timer():
             "paused": False
         }
         save_state()
+        emit_state_change()
         return jsonify({"status": "started"})
     return jsonify({"status": "already running"})
 
@@ -96,6 +119,7 @@ def stop_timer():
     state["timers"].append(entry)
     state["running"] = None
     save_state()
+    emit_state_change()
 
     return jsonify(entry)
 
@@ -115,6 +139,7 @@ def pause_timer():
     state["running"]["accumulated"] = accumulated + (current_time - state["running"]["start_time"])
     state["running"]["paused"] = True
     save_state()
+    emit_state_change()
 
     return jsonify({"status": "paused"})
 
@@ -132,6 +157,7 @@ def resume_timer():
     state["running"]["start_time"] = time.time()
     state["running"]["paused"] = False
     save_state()
+    emit_state_change()
 
     return jsonify({"status": "resumed"})
 
@@ -164,6 +190,7 @@ def update_description():
         if t["id"] == timer_id:
             t["description"] = description
             save_state()
+            emit_state_change()
             return jsonify({"status": "updated", "timer": t})
 
     return jsonify({"status": "not found"}), 404
@@ -193,5 +220,5 @@ app.jinja_env.globals.update(format_duration=format_duration)
 
 if __name__ == "__main__":
     load_state()
-    app.run(debug=True, host="0.0.0.0")
+    socketio.run(app, debug=True, host="0.0.0.0")
 
