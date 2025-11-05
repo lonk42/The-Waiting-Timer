@@ -15,23 +15,25 @@
 
     <!-- Controls -->
     <div class="flex justify-center gap-6 mb-10">
-      <button onclick="startTimer()" class="px-6 py-3 rounded-lg bg-green-600 hover:bg-green-700 font-semibold">Start</button>
+      <button id="startBtn" onclick="startTimer()" class="px-6 py-3 rounded-lg bg-green-600 hover:bg-green-700 font-semibold">Start</button>
+      <button id="pauseBtn" onclick="pauseTimer()" class="px-6 py-3 rounded-lg bg-yellow-600 hover:bg-yellow-700 font-semibold hidden">Pause</button>
+      <button id="resumeBtn" onclick="resumeTimer()" class="px-6 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 font-semibold hidden">Resume</button>
       <button onclick="stopTimer()" class="px-6 py-3 rounded-lg bg-red-600 hover:bg-red-700 font-semibold">Stop</button>
     </div>
 
     <!-- Running Timer -->
     <div id="running" class="mb-12 hidden">
-      <p class="text-xl text-red-400 font-semibold mb-2">Waiting...</p>
+      <p id="runningStatus" class="text-xl text-red-400 font-semibold mb-2">Waiting...</p>
       <p id="subtimer" class="text-4xl font-mono text-red-300"></p>
     </div>
 
     <!-- Saved Timers -->
-    <h2 class="text-2xl font-semibold text-gray-200 mb-6">Saved Timers</h2>
-    <div id="timers" class="space-y-4">
+    <h2 class="text-xl font-semibold text-gray-200 mb-3">Saved Timers</h2>
+    <div id="timers" class="space-y-2">
       {% for t in timers %}
-      <div class="p-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md text-left">
-        <p><strong>{{ t.datetime }}</strong> — {{ format_duration(t.duration) }}</p>
-        <input class="description-input w-full border border-gray-600 bg-gray-700 text-gray-100 rounded px-3 py-2 mt-3"
+      <div class="p-2 bg-gray-800 border border-gray-700 rounded shadow-sm text-left text-sm">
+        <p class="mb-1"><strong>{{ t.datetime }}</strong> — {{ format_duration(t.duration) }}</p>
+        <input class="description-input w-full border border-gray-600 bg-gray-700 text-gray-100 rounded px-2 py-1 text-sm"
                type="text"
                placeholder="Add description..."
                value="{{ t.description }}"
@@ -55,6 +57,16 @@
       fetchState();
     }
 
+    async function pauseTimer() {
+      await fetch("/pause", {method: "POST"});
+      fetchState();
+    }
+
+    async function resumeTimer() {
+      await fetch("/resume", {method: "POST"});
+      fetchState();
+    }
+
     async function updateDescription(id, description) {
       await fetch("/update_description", {
         method: "POST",
@@ -64,15 +76,16 @@
       fetchState();
     }
 
-    function startSubtimer(startTime) {
+    function startSubtimer(startTime, accumulated) {
       const runningDiv = document.getElementById("running");
       const subtimer = document.getElementById("subtimer");
       runningDiv.classList.remove("hidden");
       runningSince = startTime * 1000; // convert to ms
+      const accumulatedMs = accumulated * 1000; // convert to ms
 
       if (subtimerInterval) clearInterval(subtimerInterval);
       subtimerInterval = setInterval(() => {
-        const elapsed = Date.now() - runningSince;
+        const elapsed = Date.now() - runningSince + accumulatedMs;
         const mins = String(Math.floor(elapsed / 60000)).padStart(2, "0");
         const secs = String(Math.floor((elapsed % 60000) / 1000)).padStart(2, "0");
         const ms = String(Math.floor((elapsed % 1000) / 10)).padStart(2, "0");
@@ -93,13 +106,44 @@
       const data = await res.json();
 
       // update total
-      document.getElementById("total").textContent =
-        new Date(data.total * 1000).toISOString().substr(11, 8);
+      document.getElementById("total").textContent = formatDuration(data.total);
 
-      // update running timer
+      // update button visibility and running state
+      const startBtn = document.getElementById("startBtn");
+      const pauseBtn = document.getElementById("pauseBtn");
+      const resumeBtn = document.getElementById("resumeBtn");
+      const runningDiv = document.getElementById("running");
+      const runningStatus = document.getElementById("runningStatus");
+      const subtimer = document.getElementById("subtimer");
+
       if (data.running) {
-        startSubtimer(data.running.start_time);
+        startBtn.classList.add("hidden");
+        if (data.running.paused) {
+          pauseBtn.classList.add("hidden");
+          resumeBtn.classList.remove("hidden");
+          runningDiv.classList.remove("hidden");
+          runningStatus.textContent = "Paused...";
+          runningStatus.className = "text-xl text-yellow-400 font-semibold mb-2";
+          // Clear interval but keep display visible
+          if (subtimerInterval) clearInterval(subtimerInterval);
+          subtimerInterval = null;
+          // Display accumulated time when paused
+          const accumulated = (data.running.accumulated || 0) * 1000;
+          const mins = String(Math.floor(accumulated / 60000)).padStart(2, "0");
+          const secs = String(Math.floor((accumulated % 60000) / 1000)).padStart(2, "0");
+          const ms = String(Math.floor((accumulated % 1000) / 10)).padStart(2, "0");
+          subtimer.textContent = `${mins}:${secs}.${ms}`;
+        } else {
+          pauseBtn.classList.remove("hidden");
+          resumeBtn.classList.add("hidden");
+          runningStatus.textContent = "Waiting...";
+          runningStatus.className = "text-xl text-red-400 font-semibold mb-2";
+          startSubtimer(data.running.start_time, data.running.accumulated || 0);
+        }
       } else {
+        startBtn.classList.remove("hidden");
+        pauseBtn.classList.add("hidden");
+        resumeBtn.classList.add("hidden");
         stopSubtimer();
       }
 
@@ -108,10 +152,10 @@
       timersDiv.innerHTML = "";
       data.timers.forEach(t => {
         const box = document.createElement("div");
-        box.className = "p-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md text-left";
+        box.className = "p-2 bg-gray-800 border border-gray-700 rounded shadow-sm text-left text-sm";
         box.innerHTML = `
-          <p><strong>${t.datetime}</strong> — ${formatDuration(t.duration)}</p>
-          <input class="description-input w-full border border-gray-600 bg-gray-700 text-gray-100 rounded px-3 py-2 mt-3"
+          <p class="mb-1"><strong>${t.datetime}</strong> — ${formatDuration(t.duration)}</p>
+          <input class="description-input w-full border border-gray-600 bg-gray-700 text-gray-100 rounded px-2 py-1 text-sm"
                  type="text"
                  placeholder="Add description..."
                  value="${t.description}"
